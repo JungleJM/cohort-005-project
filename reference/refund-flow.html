@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Refund flow reference</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+
+<p class="eyebrow">Reference · Refunds in Cadence</p>
+<h1>Refund flow</h1>
+<p class="subtitle">Companion to <a href="../lessons/0001-life-of-a-refund-request.html">The life of a refund request</a>. Reflects the unified naming in <a href="../GLOSSARY.md">GLOSSARY.md</a>.</p>
+
+<h2>Stages</h2>
+<table>
+  <tr><th>Stage</th><th>Learner</th><th>Staff</th><th>Built?</th></tr>
+  <tr><td>Eligible</td><td>Request a refund button on course page</td><td>Nothing</td><td>Yes</td></tr>
+  <tr><td>Submit</td><td>Form, then redirect to Settings</td><td>Nothing</td><td>Yes</td></tr>
+  <tr><td>Waiting</td><td>Amber card on Settings, full course access</td><td>Nothing; row exists in the database</td><td>Learner side only</td></tr>
+  <tr><td>Approve or decline</td><td>None</td><td>None</td><td>No</td></tr>
+  <tr><td>Money returned</td><td>None</td><td>None</td><td>No; the app has no payment provider</td></tr>
+  <tr><td>Follow-up email</td><td>None</td><td>None</td><td>No; the confirmation email only reaches the server log</td></tr>
+</table>
+
+<h2>Eligibility rules</h2>
+<table>
+  <tr><th>Rule</th><th>Hides button</th><th>Server rejects</th></tr>
+  <tr><td>Logged in and bought this course</td><td>Yes</td><td>Yes, 401 or 403</td></tr>
+  <tr><td>Request already open</td><td>Yes</td><td>Yes, 409</td></tr>
+  <tr><td>A team seat from it is claimed</td><td>Yes</td><td>Yes, 403</td></tr>
+  <tr><td>Past the 14th day after purchase (whole days)</td><td>Yes</td><td>Yes, 403</td></tr>
+  <tr><td>2 or more hours watched</td><td>Yes</td><td>Yes, 403</td></tr>
+  <tr><td>50% or more of lessons completed</td><td>Yes</td><td><strong>No</strong></td></tr>
+  <tr><td>Reason is 10–1000 characters</td><td>n/a</td><td>Yes, 400</td></tr>
+</table>
+
+<h2>The <code>refund_requests</code> row</h2>
+<table>
+  <tr><th>Column</th><th>Today</th></tr>
+  <tr><td><code>purchase_id</code></td><td>Set on request</td></tr>
+  <tr><td><code>status</code></td><td>Always <code>requested</code>; <code>approved</code> and <code>declined</code> are unused</td></tr>
+  <tr><td><code>reason</code></td><td>Learner's words</td></tr>
+  <tr><td><code>requested_at</code></td><td>Set on request</td></tr>
+  <tr><td><code>amount_refunded</code></td><td>Always empty</td></tr>
+  <tr><td><code>resolved_at</code></td><td>Always empty</td></tr>
+  <tr><td><code>resolved_by_user_id</code></td><td>Always empty</td></tr>
+</table>
+
+<h2>Refund amount</h2>
+<p>If the purchase was at a purchasing-power discount, the amount is what was paid. Otherwise it is the course's <em>current list price</em>.</p>
+
+<h2>Where the code disagrees with itself</h2>
+<ul>
+  <li><strong>The 50% rule is only in the interface.</strong> A learner past 50% has no button, but a direct post to the route would still be accepted.</li>
+  <li><strong>Amounts can differ between screens.</strong> The form and email use the rule above, and Settings shows the amount paid. A three-seat purchase at $79 per seat, with no seats claimed, shows $79 on the form and $237 on Settings.</li>
+  <li><strong>The promise outruns the code.</strong> The form says money goes back to the card. No code does that.</li>
+  <li><strong>A resolved request would not block a new one.</strong> The open-request check only looks for <code>requested</code>.</li>
+</ul>
+
+<h2>Code map</h2>
+<table>
+  <tr><th>What</th><th>Where</th></tr>
+  <tr><td>Who is offered the button</td><td><a href="../app/routes/courses.$slug.tsx">courses.$slug.tsx</a> :450</td></tr>
+  <tr><td>Refund request form</td><td><a href="../app/routes/courses.$slug.tsx">courses.$slug.tsx</a> :1003</td></tr>
+  <tr><td>Server action</td><td><a href="../app/routes/courses.$slug.refund.ts">courses.$slug.refund.ts</a> :114</td></tr>
+  <tr><td>Learner email</td><td><a href="../app/routes/courses.$slug.refund.ts">courses.$slug.refund.ts</a> :92</td></tr>
+  <tr><td>Refund Requests card</td><td><a href="../app/routes/settings.tsx">settings.tsx</a> :209</td></tr>
+  <tr><td>Table and statuses</td><td><a href="../app/db/schema.ts">schema.ts</a> :34, :232</td></tr>
+  <tr><td>Seeded example (Liam)</td><td><a href="../scripts/seed.ts">seed.ts</a> :2728</td></tr>
+</table>
+
+</body>
+</html>

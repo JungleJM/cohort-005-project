@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The life of a refund request</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/quiz.js" defer></script>
+</head>
+<body>
+
+<p class="eyebrow">Lesson 1 · Refunds in Cadence</p>
+<h1>The life of a refund request</h1>
+<p class="subtitle">What the learner sees, what we see, and where the road ends.</p>
+
+<p class="keyline">Today a learner can ask for a refund, but nobody can answer. The request half is built. The approval half is not.</p>
+
+<p>By the end you should be able to walk through the flow from memory and say exactly where it stops. Interfaces below are redrawn from the code, using the seeded learner Liam as the example.</p>
+
+<h2>1. The learner requests a refund</h2>
+<p>An enrolled learner opens the course page. If the purchase qualifies, a quiet <em>Request a refund</em> button sits at the bottom of the sidebar. Clicking it opens a form that needs a reason of 10 to 1000 characters.</p>
+<div class="split">
+  <div>
+    <div class="split-label">The learner sees</div>
+    <div class="mock">
+      <h4>Request a refund</h4>
+      <p class="dim">If we approve your refund, you'll lose access to this course and we'll send $79.00 back to the card you paid with.</p>
+      <div class="field">What went wrong?</div>
+      <span class="btn">Request a refund</span> <span class="btn ghost">Keep it</span>
+    </div>
+  </div>
+  <div>
+    <div class="split-label">We see</div>
+    <div class="mock empty">Nothing yet</div>
+  </div>
+</div>
+<p>The purchase qualifies only if all of these hold: it is within 14 days, the learner has watched under 2 hours, no team seat from it has been claimed, and no request is already open. The button also hides at 50% of lessons completed.</p>
+<p class="source">Source: <a href="../app/routes/courses.$slug.tsx">courses.$slug.tsx</a> lines 450–499 (who gets offered) and 1003–1064 (the form).</p>
+
+<h2>2. The request goes through the system</h2>
+<p>The form posts to a <a href="https://reactrouter.com/start/framework/actions">route action</a> that runs on the server. In order, it:</p>
+<ol>
+  <li>Re-checks who is asking and whether the purchase is eligible.</li>
+  <li>Writes one row to the <code>refund_requests</code> table.</li>
+  <li>Builds a confirmation email <em>to the learner</em> and prints it to the server log, because no mail service is connected.</li>
+  <li>Redirects the learner to Settings.</li>
+</ol>
+<p>The row holds the purchase, the reason, the time, and <code>status = requested</code>. That row is the only lasting record of the request.</p>
+<p class="source">Source: <a href="../app/routes/courses.$slug.refund.ts">courses.$slug.refund.ts</a> lines 114–241.</p>
+
+<h2>3. While the learner waits</h2>
+<div class="split">
+  <div>
+    <div class="split-label">The learner sees, on Settings</div>
+    <div class="mock">
+      <h4>Refund Requests</h4>
+      <p class="dim">One refund is waiting on us.</p>
+      <div class="box">
+        <div class="row"><strong>Introduction to TypeScript</strong><span class="pill">Refund requested</span></div>
+        <p class="dim">$79.00 · raised 11/5/2026</p>
+        <p style="margin:0">Bought the wrong one, I meant the advanced course.</p>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="split-label">We see</div>
+    <div class="mock empty">Nothing is sent to us.<br>No email, badge, or admin page.</div>
+  </div>
+</div>
+<p>You asked how we get notified: we don't. The only traces are the database row and a server log line addressed to the learner, and that log line doesn't include their reason.</p>
+<p>On the course page the Request a refund button disappears, but nothing says a request is open. The learner keeps full access, because the action never touches their enrollment.</p>
+<p class="source">Source: <a href="../app/routes/settings.tsx">settings.tsx</a> lines 58–76 and 209–243.</p>
+
+<h2>4. How we approve it</h2>
+<p>We can't. The admin area has Users, Courses and Categories, with no refund page. No code anywhere writes <code>approved</code> or <code>declined</code>. The app also has no payment provider, so there is no charge to send back, whatever the form promises about the card.</p>
+<p>The design is sketched in the <a href="../app/db/schema.ts">schema</a> (lines 34–38 and 232–254), which has the statuses and three columns that are always empty today: <code>amount_refunded</code>, <code>resolved_at</code>, <code>resolved_by_user_id</code>.</p>
+
+<h2>5. How the interfaces change afterwards</h2>
+<p>They don't, because no approval can happen. But the existing queries tell us what would happen if someone changed the status by hand, since they only ever look for <code>requested</code>:</p>
+<ul>
+  <li>The Settings card would vanish without any "approved" message.</li>
+  <li>The learner would keep the course.</li>
+  <li>If they were still eligible, the Request a refund button would come back and they could ask again.</li>
+</ul>
+
+<h2>Check yourself</h2>
+<p>Try these from memory, without scrolling up.</p>
+
+<div class="quiz" data-correct="2">
+  <p class="quiz-prompt"><strong>1.</strong> A learner submits a valid request. What do staff receive?</p>
+  <div class="quiz-options">
+    <button>An email to support</button>
+    <button>An admin queue item</button>
+    <button>No staff alert sent</button>
+    <button>A red sidebar badge</button>
+  </div>
+  <p class="quiz-why">The only email is built for the learner, and it goes to the server log. Staff get no alert.</p>
+</div>
+
+<div class="quiz" data-correct="1">
+  <p class="quiz-prompt"><strong>2.</strong> Where does the learner see that their request is waiting?</p>
+  <div class="quiz-options">
+    <button>Dashboard, in a green card</button>
+    <button>Settings, in an amber card</button>
+    <button>Checkout, in a grey banner</button>
+    <button>Lessons, in a yellow strip</button>
+  </div>
+  <p class="quiz-why">The Settings page lists open requests. The course page only loses its Request a refund button.</p>
+</div>
+
+<div class="quiz" data-correct="3">
+  <p class="quiz-prompt"><strong>3.</strong> Liam's request is pending. What can Liam do with the course?</p>
+  <div class="quiz-options">
+    <button>Watch free preview lessons</button>
+    <button>Lose access until reviewed</button>
+    <button>View only finished lessons</button>
+    <button>Keep watching every lesson</button>
+  </div>
+  <p class="quiz-why">The action adds a refund row and leaves the enrollment alone, so access is unchanged.</p>
+</div>
+
+<div class="quiz" data-correct="0">
+  <p class="quiz-prompt"><strong>4.</strong> Which values of <code>status</code> does the application ever write today?</p>
+  <div class="quiz-options">
+    <button>Only requested is ever written</button>
+    <button>Only approved is ever written</button>
+    <button>Only declined is ever written</button>
+    <button>All three are ever written</button>
+  </div>
+  <p class="quiz-why">The enum defines three values, but only <code>requested</code> is ever saved. The other two are unused.</p>
+</div>
+
+<p class="quiz-score" aria-live="polite"></p>
+
+<div class="next">
+  <p><strong>Read next:</strong> the <a href="../app/routes/courses.$slug.refund.ts">refund action</a> itself is the primary source, and it is 241 lines top to bottom. For the wider world, Stripe's <a href="https://docs.stripe.com/refunds">refunds guide</a> shows what approval has to trigger once a real payment provider exists.</p>
+  <p><strong>Keep for later:</strong> the <a href="../reference/refund-flow.html">refund flow reference</a> has the rules, the data, and the places the code disagrees with itself.</p>
+  <p><strong>Stuck on anything?</strong> Ask me in the chat. I'm your teacher here, and no question about this flow is too small.</p>
+</div>
+
+</body>
+</html>
