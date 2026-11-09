@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateLessonWatchTime,
   calculateRefund,
   dayOfRefundWindow,
   formatWatchTime,
+  hasReachedRefundLimit,
   isEverySeatClaimed,
 } from "./refunds";
 
@@ -51,6 +53,69 @@ describe("dayOfRefundWindow", () => {
     expect(
       dayOfRefundWindow("2026-03-01T08:00:00", "2026-03-01T23:00:00")
     ).toBe(0);
+  });
+});
+
+describe("calculateLessonWatchTime", () => {
+  it("counts video played straight through", () => {
+    expect(calculateLessonWatchTime([0, 10, 20, 30])).toBe(30);
+  });
+
+  it("adds nothing for rewatching the same video", () => {
+    expect(calculateLessonWatchTime([0, 10, 20, 0, 10, 20])).toBe(20);
+  });
+
+  it("does not count video skipped over", () => {
+    expect(calculateLessonWatchTime([0, 10, 2400, 2410])).toBe(20);
+  });
+
+  it("counts video played at double speed in full", () => {
+    expect(calculateLessonWatchTime([0, 20, 40])).toBe(40);
+  });
+
+  it("is zero with nothing to measure between", () => {
+    expect(calculateLessonWatchTime([])).toBe(0);
+    expect(calculateLessonWatchTime([2400])).toBe(0);
+  });
+});
+
+describe("hasReachedRefundLimit", () => {
+  const underEveryLimit = {
+    watchTimeSeconds: 0,
+    lessonsCompleted: 0,
+    totalLessons: 10,
+  };
+
+  it("is false under both limits", () => {
+    expect(hasReachedRefundLimit(underEveryLimit)).toBe(false);
+  });
+
+  it("is reached at two hours of Watch Time", () => {
+    expect(
+      hasReachedRefundLimit({ ...underEveryLimit, watchTimeSeconds: 7199 })
+    ).toBe(false);
+    expect(
+      hasReachedRefundLimit({ ...underEveryLimit, watchTimeSeconds: 7200 })
+    ).toBe(true);
+  });
+
+  it("is reached at half the lessons completed", () => {
+    expect(
+      hasReachedRefundLimit({ ...underEveryLimit, lessonsCompleted: 4 })
+    ).toBe(false);
+    expect(
+      hasReachedRefundLimit({ ...underEveryLimit, lessonsCompleted: 5 })
+    ).toBe(true);
+  });
+
+  it("is false for a course with no lessons", () => {
+    expect(
+      hasReachedRefundLimit({
+        watchTimeSeconds: 0,
+        lessonsCompleted: 0,
+        totalLessons: 0,
+      })
+    ).toBe(false);
   });
 });
 

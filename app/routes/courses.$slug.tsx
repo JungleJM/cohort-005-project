@@ -15,17 +15,18 @@ import {
   lessonProgress,
   courseRatings,
   purchases,
-  videoWatchEvents,
   LessonProgressStatus,
 } from "~/db/schema";
-import { eq, and, or, sql, inArray } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import {
+  getCourseProgress,
   getOpenRefundRequest,
   getSeatCounts,
   hasApprovedRefundRequest,
 } from "~/lib/refund-requests.server";
 import {
   calculateRefund,
+  hasReachedRefundLimit,
   isEverySeatClaimed,
   isTeamPurchase,
   REFUND_WINDOW_DAYS,
@@ -374,9 +375,6 @@ function rateCourse(userId: number, courseId: number, rating: number) {
     .get();
 }
 
-const REFUND_WATCH_LIMIT_SECONDS = 2 * 60 * 60;
-const REFUND_COMPLETION_LIMIT = 0.5;
-
 function getPurchaseForCourse(userId: number, courseId: number) {
   return db
     .select()
@@ -384,44 +382,6 @@ function getPurchaseForCourse(userId: number, courseId: number) {
     .where(and(eq(purchases.userId, userId), eq(purchases.courseId, courseId)))
     .orderBy(sql`${purchases.createdAt} desc`)
     .get();
-}
-
-function getCompletedLessonCount(userId: number, lessonIds: number[]) {
-  if (lessonIds.length === 0) return 0;
-
-  const result = db
-    .select({ count: sql<number>`count(*)` })
-    .from(lessonProgress)
-    .where(
-      and(
-        eq(lessonProgress.userId, userId),
-        eq(lessonProgress.status, LessonProgressStatus.Completed),
-        inArray(lessonProgress.lessonId, lessonIds)
-      )
-    )
-    .get();
-
-  return result?.count ?? 0;
-}
-
-function getSecondsWatched(userId: number, lessonIds: number[]) {
-  if (lessonIds.length === 0) return 0;
-
-  const furthestPerLesson = db
-    .select({
-      furthest: sql<number>`max(${videoWatchEvents.positionSeconds})`,
-    })
-    .from(videoWatchEvents)
-    .where(
-      and(
-        eq(videoWatchEvents.userId, userId),
-        inArray(videoWatchEvents.lessonId, lessonIds)
-      )
-    )
-    .groupBy(videoWatchEvents.lessonId)
-    .all();
-
-  return furthestPerLesson.reduce((total, row) => total + row.furthest, 0);
 }
 
 // Compare whole days, not hours — a purchase at 23:00 should still get its
@@ -454,18 +414,7 @@ function getRefundOffer(userId: number, course: { id: number }) {
 
   if (!isWithinWindow) return null;
 
-  const lessonIds = getCourseLessonIds(course.id);
-
-  if (lessonIds.length > 0) {
-    const completedCount = getCompletedLessonCount(userId, lessonIds);
-    if (completedCount / lessonIds.length >= REFUND_COMPLETION_LIMIT) {
-      return null;
-    }
-  }
-
-  if (getSecondsWatched(userId, lessonIds) >= REFUND_WATCH_LIMIT_SECONDS) {
-    return null;
-  }
+  if (hasReachedRefundLimit(getCourseProgress(userId, course.id))) return null;
 
   const seats = getSeatCounts(purchase.id);
 

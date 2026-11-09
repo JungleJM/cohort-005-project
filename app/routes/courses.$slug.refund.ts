@@ -5,30 +5,27 @@ import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
 import {
   courses,
-  lessons,
-  modules,
   purchases,
   refundRequests,
   users,
-  videoWatchEvents,
   RefundRequestStatus,
 } from "~/db/schema";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
 import { formatPrice } from "~/lib/utils";
 import {
+  getCourseProgress,
   getOpenRefundRequest,
   getSeatCounts,
   hasApprovedRefundRequest,
 } from "~/lib/refund-requests.server";
 import {
   calculateRefund,
+  hasReachedRefundLimit,
   isEverySeatClaimed,
   isTeamPurchase,
   REFUND_WINDOW_DAYS,
 } from "~/lib/refunds";
-
-const MAX_WATCHED_HOURS = 2;
 
 const refundParamsSchema = z.object({
   slug: z.string().min(1),
@@ -53,17 +50,6 @@ function getLatestPurchase(userId: number, courseId: number) {
     .where(and(eq(purchases.userId, userId), eq(purchases.courseId, courseId)))
     .orderBy(sql`${purchases.createdAt} desc`)
     .get();
-}
-
-function getLessonIdsForCourse(courseId: number): number[] {
-  const rows = db
-    .select({ id: lessons.id })
-    .from(lessons)
-    .innerJoin(modules, eq(lessons.moduleId, modules.id))
-    .where(eq(modules.courseId, courseId))
-    .all();
-
-  return rows.map((row) => row.id);
 }
 
 // The fourteen-day window is counted in whole days, not hours — someone who
@@ -170,32 +156,8 @@ export async function action({ params, request }: Route.ActionArgs) {
     });
   }
 
-  const courseLessonIds = getLessonIdsForCourse(course.id);
-
-  let watchedSeconds = 0;
-  if (courseLessonIds.length > 0) {
-    const furthestPerLesson = db
-      .select({
-        furthest: sql<number>`max(${videoWatchEvents.positionSeconds})`,
-      })
-      .from(videoWatchEvents)
-      .where(
-        and(
-          eq(videoWatchEvents.userId, currentUserId),
-          inArray(videoWatchEvents.lessonId, courseLessonIds)
-        )
-      )
-      .groupBy(videoWatchEvents.lessonId)
-      .all();
-
-    watchedSeconds = furthestPerLesson.reduce(
-      (total, row) => total + row.furthest,
-      0
-    );
-  }
-
-  if (watchedSeconds >= MAX_WATCHED_HOURS * 60 * 60) {
-    throw data("You have watched too much of this course to request a refund.", {
+  if (hasReachedRefundLimit(getCourseProgress(currentUserId, course.id))) {
+    throw data("You have taken too much of this course to request a refund.", {
       status: 403,
     });
   }

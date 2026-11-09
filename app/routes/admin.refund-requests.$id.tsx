@@ -133,7 +133,7 @@ export default function AdminRefundRequest({
   const declineDialog = useRef<HTMLDialogElement>(null);
   const isSubmitting = fetcher.state !== "idle";
   const isOpen = refundRequest.status === RefundRequestStatus.Open;
-  const { seats, refundIfApproved, activity } = refundRequest;
+  const { seats, refundIfApproved, progress } = refundRequest;
 
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.outcome) {
@@ -204,10 +204,10 @@ export default function AdminRefundRequest({
               {refundRequest.dayOfRefundWindow} of {REFUND_WINDOW_DAYS})
             </Detail>
             <Detail label="Watch time">
-              {formatWatchTime(activity.secondsWatched)}
+              {formatWatchTime(progress.watchTimeSeconds)}
             </Detail>
             <Detail label="Lessons completed">
-              {activity.lessonsCompleted} of {activity.totalLessons}
+              {progress.lessonsCompleted} of {progress.totalLessons}
             </Detail>
             {isOpen && (
               <Detail label="Refund if approved now">

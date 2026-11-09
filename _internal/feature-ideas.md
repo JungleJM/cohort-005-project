@@ -10,6 +10,7 @@
 9. Funnel Analysis — visualize where students drop off in a course, identify problem lessons
 10. Revenue Reports — breakdown by course, PPP tier, team vs individual, with CSV export
 11. Lesson Search — full-text search across all lesson content within a course
+39. Precise Watch Tracking — record the stretches of video actually played instead of saving a position every 10 seconds, so Watch Time no longer has to estimate across skips and faster playback
 
 ## Medium (half day)
 
@@ -24,6 +25,7 @@
 20. Leaderboards — ranked student lists per-course or globally, based on completions, scores, streaks
 21. Audit Log — record of all instructor/admin actions for accountability and debugging
 22. Rate Limiting — throttle API requests to prevent abuse
+38. Resume After Refund — show a Learner's partial Progress on a course they no longer have an Enrollment for, disabled on their profile, with an option to re-enroll and continue
 
 ## Hard (1-2 days)
 

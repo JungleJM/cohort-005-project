@@ -14,6 +14,19 @@ _Avoid_: User
 Someone at Cadence who decides Refund Requests. Together they are the Support Team.
 _Avoid_: Staff, Team, Team Member (a Team is a customer organisation that buys seats)
 
+### Taking a course
+
+**Enrollment**:
+A Learner's access to a course, gained by buying it or claiming a Seat.
+
+**Progress**:
+A Learner's record of lessons completed, video watched and quiz attempts on a course. It is kept when their Enrollment ends, and picks up where it left off if they gain a new Enrollment.
+_Avoid_: Activity
+
+**Watch Time**:
+The amount of distinct course video a Learner has watched. Rewatching adds nothing, and skipped video doesn't count.
+_Avoid_: Seconds watched
+
 ### Seats
 
 **Seat**:
@@ -30,6 +43,9 @@ _Avoid_: Refund (for the ask itself), Cancellation, Reversal, Chargeback
 
 **Refund Window**:
 The fourteen days after a purchase in which a Learner can raise a Refund Request. Only the day it was raised counts, so time spent waiting for a decision never counts against the Learner.
+
+**Refund Limit**:
+The point past which a Learner can't raise a Refund Request: two hours of Watch Time or half a course's lessons completed, counted across all their Progress on that course.
 
 **Open Refund Request**:
 A Refund Request the Support Team hasn't decided yet.

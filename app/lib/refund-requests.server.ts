@@ -1,5 +1,5 @@
 import { data } from "react-router";
-import { and, desc, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, asc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "~/db";
 import {
   coupons,
@@ -20,10 +20,12 @@ import {
 } from "~/db/schema";
 import { getCurrentUserId } from "~/lib/session";
 import {
+  calculateLessonWatchTime,
   calculateRefund,
   dayOfRefundWindow,
   isEverySeatClaimed,
   isTeamPurchase,
+  type Progress,
   type SeatCounts,
 } from "~/lib/refunds";
 import { formatPrice } from "~/lib/utils";
@@ -166,7 +168,15 @@ export function listOpenRefundRequests() {
   });
 }
 
-function getLearnerActivity(learnerId: number, courseId: number) {
+/**
+ * A Learner's Progress on a course, across every purchase of it. Pass `asOf`
+ * to see it as it stood at that moment.
+ */
+export function getCourseProgress(
+  learnerId: number,
+  courseId: number,
+  asOf?: string
+): Progress {
   const lessonIds = db
     .select({ id: lessons.id })
     .from(lessons)
@@ -176,22 +186,30 @@ function getLearnerActivity(learnerId: number, courseId: number) {
     .map((lesson) => lesson.id);
 
   if (lessonIds.length === 0) {
-    return { secondsWatched: 0, lessonsCompleted: 0, totalLessons: 0 };
+    return { watchTimeSeconds: 0, lessonsCompleted: 0, totalLessons: 0 };
   }
 
-  const furthestPerLesson = db
+  const watchEvents = db
     .select({
-      furthest: sql<number>`max(${videoWatchEvents.positionSeconds})`,
+      lessonId: videoWatchEvents.lessonId,
+      positionSeconds: videoWatchEvents.positionSeconds,
     })
     .from(videoWatchEvents)
     .where(
       and(
         eq(videoWatchEvents.userId, learnerId),
-        inArray(videoWatchEvents.lessonId, lessonIds)
+        inArray(videoWatchEvents.lessonId, lessonIds),
+        asOf ? lte(videoWatchEvents.createdAt, asOf) : undefined
       )
     )
-    .groupBy(videoWatchEvents.lessonId)
     .all();
+
+  const positionsByLesson = new Map<number, number[]>();
+  for (const event of watchEvents) {
+    const positions = positionsByLesson.get(event.lessonId) ?? [];
+    positions.push(event.positionSeconds);
+    positionsByLesson.set(event.lessonId, positions);
+  }
 
   const completed = db
     .select({ count: sql<number>`count(*)` })
@@ -200,14 +218,15 @@ function getLearnerActivity(learnerId: number, courseId: number) {
       and(
         eq(lessonProgress.userId, learnerId),
         eq(lessonProgress.status, LessonProgressStatus.Completed),
-        inArray(lessonProgress.lessonId, lessonIds)
+        inArray(lessonProgress.lessonId, lessonIds),
+        asOf ? lte(lessonProgress.completedAt, asOf) : undefined
       )
     )
     .get();
 
   return {
-    secondsWatched: furthestPerLesson.reduce(
-      (total, row) => total + row.furthest,
+    watchTimeSeconds: [...positionsByLesson.values()].reduce(
+      (total, positions) => total + calculateLessonWatchTime(positions),
       0
     ),
     lessonsCompleted: completed?.count ?? 0,
@@ -267,7 +286,11 @@ export function getRefundRequestDetail(id: number) {
   return {
     ...row,
     dayOfRefundWindow: dayOfRefundWindow(row.purchasedAt, row.requestedAt),
-    activity: getLearnerActivity(row.learnerId, row.courseId),
+    progress: getCourseProgress(
+      row.learnerId,
+      row.courseId,
+      row.decidedAt ?? undefined
+    ),
     seats,
     refundIfApproved: calculateRefund(row.amountPaid, seats),
     canApprove: !isEverySeatClaimed(seats),
