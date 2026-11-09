@@ -10,7 +10,7 @@ import {
   UserRole,
   CourseStatus,
   LessonProgressStatus,
-  RefundStatus,
+  RefundRequestStatus,
   QuestionType,
   TeamMemberRole,
 } from "../app/db/schema";
@@ -77,6 +77,7 @@ async function seed() {
     DROP TABLE IF EXISTS coupons;
     DROP TABLE IF EXISTS team_members;
     DROP TABLE IF EXISTS teams;
+    DROP TABLE IF EXISTS refund_requests;
     DROP TABLE IF EXISTS refunds;
     DROP TABLE IF EXISTS purchases;
     DROP TABLE IF EXISTS enrollments;
@@ -2724,9 +2725,9 @@ This course is still in draft while the cluster examples are rewritten against t
     []
   );
 
-  // ─── Liam's Refund ───
-  // One learner with a Refund waiting on an admin. The dates count back from
-  // today, so the fourteen-day refund window is still open whenever you seed.
+  // ─── Liam's Refund Request ───
+  // One learner with a Refund Request waiting on an admin. The dates count back from
+  // today, so the fourteen-day Refund Eligibility Window is still open whenever you seed.
 
   const liam = studentByEmail("liam@example.com");
   const [liamPurchase] = db
@@ -2772,16 +2773,16 @@ This course is still in draft while the cluster examples are rewritten against t
       updatedAt: daysAgo(6),
     })
     .run();
-  db.insert(schema.refunds)
+  db.insert(schema.refundRequests)
     .values({
       purchaseId: liamPurchase.id,
-      status: RefundStatus.Requested,
+      status: RefundRequestStatus.Requested,
       reason: "Bought the wrong one, I meant the advanced course.",
       requestedAt: daysAgo(4),
     })
     .run();
 
-  console.log("Created Liam's Refund.");
+  console.log("Created Liam's Refund Request.");
 
   // ─── Flush watch events ───
   // Batched: the heartbeat makes these by far the largest table, and one
