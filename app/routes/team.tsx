@@ -60,6 +60,7 @@ interface CouponRow {
   courseId: number;
   courseTitle: string;
   redeemedByEmail: string | null;
+  refunded: boolean;
   createdAt: string;
 }
 
@@ -111,6 +112,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       });
     }
     const entry = courseMap.get(coupon.courseId)!;
+    if (coupon.refundId !== null) continue;
     entry.total++;
     if (coupon.redeemedByUserId !== null) {
       entry.claimed++;
@@ -141,6 +143,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       courseId: coupon.courseId,
       courseTitle: course?.title ?? "Unknown Course",
       redeemedByEmail,
+      refunded: coupon.refundId !== null,
       createdAt: coupon.createdAt,
     };
   });
@@ -296,6 +299,8 @@ export default function Team({ loaderData }: Route.ComponentProps) {
                         <span className="text-muted-foreground">
                           Claimed by {coupon.redeemedByEmail}
                         </span>
+                      ) : coupon.refunded ? (
+                        <span className="text-muted-foreground">Refunded</span>
                       ) : (
                         <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                           Unclaimed
@@ -303,7 +308,7 @@ export default function Team({ loaderData }: Route.ComponentProps) {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {!coupon.redeemedByEmail && (
+                      {!coupon.redeemedByEmail && !coupon.refunded && (
                         <CopyButton code={coupon.code} />
                       )}
                     </td>

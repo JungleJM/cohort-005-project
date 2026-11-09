@@ -5,20 +5,29 @@ import { getCurrentUserId } from "~/lib/session";
 import { db } from "~/db";
 import {
   courses,
-  coupons,
   lessons,
   modules,
   purchases,
-  refunds,
+  refundRequests,
   users,
   videoWatchEvents,
-  RefundStatus,
+  RefundRequestStatus,
 } from "~/db/schema";
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
 import { formatPrice } from "~/lib/utils";
+import {
+  getOpenRefundRequest,
+  getSeatCounts,
+  hasApprovedRefundRequest,
+} from "~/lib/refund-requests.server";
+import {
+  calculateRefund,
+  isEverySeatClaimed,
+  isTeamPurchase,
+  REFUND_WINDOW_DAYS,
+} from "~/lib/refunds";
 
-const REFUND_WINDOW_DAYS = 14;
 const MAX_WATCHED_HOURS = 2;
 
 const refundParamsSchema = z.object({
@@ -57,19 +66,6 @@ function getLessonIdsForCourse(courseId: number): number[] {
   return rows.map((row) => row.id);
 }
 
-function getOpenRefundRequest(purchaseId: number) {
-  return db
-    .select()
-    .from(refunds)
-    .where(
-      and(
-        eq(refunds.purchaseId, purchaseId),
-        eq(refunds.status, RefundStatus.Open)
-      )
-    )
-    .get();
-}
-
 // The fourteen-day window is counted in whole days, not hours — someone who
 // buys at 23:00 should still get the whole of their fourteenth day.
 function calendarDay(when: Date): string {
@@ -93,7 +89,12 @@ function buildRefundRequestEmail(input: {
   learnerEmail: string;
   courseTitle: string;
   amount: number;
+  teamPurchase: boolean;
 }) {
+  const amountLine = input.teamPurchase
+    ? `The refund covers every seat still unclaimed when we decide your request. Today that is ${formatPrice(input.amount)}.`
+    : `The refund is for ${formatPrice(input.amount)}, the amount you paid.`;
+
   return {
     to: input.learnerEmail,
     subject: `Refund requested — ${input.courseTitle}`,
@@ -101,7 +102,7 @@ function buildRefundRequestEmail(input: {
       `Hi ${input.learnerName},`,
       "",
       `We have your refund request for "${input.courseTitle}".`,
-      `The refund is for ${formatPrice(input.amount)}, the amount you paid.`,
+      amountLine,
       "",
       "Our team reviews every refund request by hand. You do not need to do anything else — we will email you again when it is done.",
       "",
@@ -146,18 +147,18 @@ export async function action({ params, request }: Route.ActionArgs) {
     });
   }
 
-  // A seat that came out of a team licence, and has been claimed, belongs to
-  // the team — the learner cannot hand it back on their own.
-  const claimedSeat = db
-    .select({ id: coupons.id })
-    .from(coupons)
-    .where(
-      and(eq(coupons.purchaseId, purchase.id), isNotNull(coupons.redeemedAt))
-    )
-    .get();
+  if (hasApprovedRefundRequest(purchase.id)) {
+    throw data("This purchase has already been refunded.", { status: 409 });
+  }
 
-  if (claimedSeat) {
-    throw data("A claimed team seat cannot be refunded.", { status: 403 });
+  // A Claimed Seat can't be refunded, so a purchase with no unclaimed Seat
+  // left has nothing to ask for.
+  const seats = getSeatCounts(purchase.id);
+
+  if (isEverySeatClaimed(seats)) {
+    throw data("Every seat on this purchase has been claimed.", {
+      status: 403,
+    });
   }
 
   const today = calendarDay(new Date());
@@ -207,10 +208,10 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   db
-    .insert(refunds)
+    .insert(refundRequests)
     .values({
       purchaseId: purchase.id,
-      status: RefundStatus.Open,
+      status: RefundRequestStatus.Open,
       reason: parsed.data.reason,
     })
     .returning()
@@ -220,7 +221,8 @@ export async function action({ params, request }: Route.ActionArgs) {
     learnerName: learner.name,
     learnerEmail: learner.email,
     courseTitle: course.title,
-    amount: purchase.amountPaid,
+    amount: calculateRefund(purchase.amountPaid, seats).amount,
+    teamPurchase: isTeamPurchase(seats),
   });
 
   console.log(

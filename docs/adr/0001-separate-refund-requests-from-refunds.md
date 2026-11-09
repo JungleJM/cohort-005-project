@@ -1,0 +1,3 @@
+# Store Refund Requests and Refunds separately
+
+A Refund Request (the Learner's ask, decided by the Support Team) and a Refund (the money going back) have independent lifecycles: a Refund can fail while its Refund Request stays approved, and a Declined Refund Request has no Refund at all. A single `refunds` table with one status can't represent both, so we split it into `refund_requests` (open, approved, declined) and `refunds` (pending, issued, failed), and approving a Refund Request creates a Pending Refund for the amount paid, less the price of any Claimed Seats. Cadence has no payment provider yet, so nothing moves a Refund out of Pending for now.

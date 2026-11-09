@@ -48,6 +48,10 @@ function redeemCoupon(
     return { ok: false, error: "Coupon not found" };
   }
 
+  if (coupon.refundId !== null) {
+    return { ok: false, error: "This seat has been refunded." };
+  }
+
   if (coupon.redeemedByUserId !== null) {
     return { ok: false, error: "Coupon has already been redeemed" };
   }
@@ -134,12 +138,13 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     throw data("Course not found.", { status: 404 });
   }
 
+  const refunded = coupon.refundId !== null;
   const alreadyRedeemed = coupon.redeemedByUserId !== null;
   const alreadyEnrolled = isUserEnrolled(currentUserId, coupon.courseId);
 
   // Check country mismatch upfront so we can show a clear message
   let countryMismatch = false;
-  if (!alreadyRedeemed && !alreadyEnrolled) {
+  if (!refunded && !alreadyRedeemed && !alreadyEnrolled) {
     const userCountry = await resolveCountry(request);
     const purchase = db
       .select()
@@ -154,6 +159,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   return {
     course: { id: course.id, title: course.title, slug: course.slug },
     code,
+    refunded,
     alreadyRedeemed,
     alreadyEnrolled,
     countryMismatch,
@@ -194,8 +200,14 @@ export default function Redeem({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { course, code, alreadyRedeemed, alreadyEnrolled, countryMismatch } =
-    loaderData;
+  const {
+    course,
+    code,
+    refunded,
+    alreadyRedeemed,
+    alreadyEnrolled,
+    countryMismatch,
+  } = loaderData;
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state !== "idle";
 
@@ -208,7 +220,8 @@ export default function Redeem({
   }, [fetcher.data, actionData]);
 
   // Determine which state to show
-  const canRedeem = !alreadyRedeemed && !alreadyEnrolled && !countryMismatch;
+  const canRedeem =
+    !refunded && !alreadyRedeemed && !alreadyEnrolled && !countryMismatch;
 
   return (
     <div className="mx-auto max-w-2xl p-6 lg:p-8">
@@ -229,7 +242,18 @@ export default function Redeem({
             <code className="rounded bg-muted px-2 py-0.5">{code}</code>
           </p>
 
-          {alreadyRedeemed ? (
+          {refunded ? (
+            <div className="rounded-lg bg-destructive/10 p-4">
+              <div className="flex items-center justify-center gap-2 text-destructive">
+                <AlertCircle className="size-5" />
+                <span className="font-medium">This seat has been refunded</span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                This code no longer works. Please ask the person who shared this
+                link for a new coupon.
+              </p>
+            </div>
+          ) : alreadyRedeemed ? (
             <div className="rounded-lg bg-destructive/10 p-4">
               <div className="flex items-center justify-center gap-2 text-destructive">
                 <AlertCircle className="size-5" />

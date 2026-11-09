@@ -10,6 +10,7 @@ import {
   UserRole,
   CourseStatus,
   LessonProgressStatus,
+  RefundRequestStatus,
   RefundStatus,
   QuestionType,
   TeamMemberRole,
@@ -78,6 +79,7 @@ async function seed() {
     DROP TABLE IF EXISTS team_members;
     DROP TABLE IF EXISTS teams;
     DROP TABLE IF EXISTS refunds;
+    DROP TABLE IF EXISTS refund_requests;
     DROP TABLE IF EXISTS purchases;
     DROP TABLE IF EXISTS enrollments;
     DROP TABLE IF EXISTS lessons;
@@ -2772,16 +2774,118 @@ This course is still in draft while the cluster examples are rewritten against t
       updatedAt: daysAgo(6),
     })
     .run();
-  db.insert(schema.refunds)
+  db.insert(schema.refundRequests)
     .values({
       purchaseId: liamPurchase.id,
-      status: RefundStatus.Open,
+      status: RefundRequestStatus.Declined,
+      reason: "Changed my mind.",
+      reasonForDecline: "Please tell us what didn't work for you.",
+      requestedAt: daysAgo(8),
+      decidedAt: daysAgo(7),
+      decidedByUserId: admin.id,
+    })
+    .run();
+  db.insert(schema.refundRequests)
+    .values({
+      purchaseId: liamPurchase.id,
+      status: RefundRequestStatus.Open,
       reason: "Bought the wrong one, I meant the advanced course.",
       requestedAt: daysAgo(4),
     })
     .run();
 
-  console.log("Created Liam's Refund Request.");
+  // An earlier purchase of Liam's that was refunded, so the Support Team sees
+  // both outcomes in his history.
+  const [liamRefundedPurchase] = db
+    .insert(schema.purchases)
+    .values({
+      userId: liam.id,
+      courseId: course3.id,
+      amountPaid: 3999,
+      country: null,
+      createdAt: daysAgo(60),
+    })
+    .returning()
+    .all();
+  const [liamApprovedRequest] = db
+    .insert(schema.refundRequests)
+    .values({
+      purchaseId: liamRefundedPurchase.id,
+      status: RefundRequestStatus.Approved,
+      reason: "The audio was too quiet for me to follow.",
+      requestedAt: daysAgo(55),
+      decidedAt: daysAgo(54),
+      decidedByUserId: admin.id,
+    })
+    .returning()
+    .all();
+  db.insert(schema.refunds)
+    .values({
+      refundRequestId: liamApprovedRequest.id,
+      amount: 3999,
+      status: RefundStatus.Pending,
+      createdAt: daysAgo(54),
+    })
+    .run();
+
+  console.log("Created Liam's Refund Requests.");
+
+  // ─── A team purchase with a Claimed Seat ───
+  // Five Seats with one claimed, so approving refunds four of the five.
+
+  const [bossyRefundPurchase] = db
+    .insert(schema.purchases)
+    .values({
+      userId: bossy.id,
+      courseId: course1.id,
+      amountPaid: 7900 * 5,
+      country: "US",
+      createdAt: daysAgo(6),
+    })
+    .returning()
+    .all();
+  const bossyRefundSeats = db
+    .insert(schema.coupons)
+    .values(
+      ["A", "B", "C", "D", "E"].map((suffix) => ({
+        teamId: team1.id,
+        courseId: course1.id,
+        code: `TEAM-TYPESCRIPT-${suffix}`,
+        purchaseId: bossyRefundPurchase.id,
+        createdAt: daysAgo(6),
+      }))
+    )
+    .returning()
+    .all();
+  const seatClaimant = studentByEmail("emma.wilson@student.dev");
+  db.update(schema.coupons)
+    .set({ redeemedByUserId: seatClaimant.id, redeemedAt: daysAgo(2) })
+    .where(eq(schema.coupons.id, bossyRefundSeats[0].id))
+    .run();
+  const claimantEnrollments = db
+    .select()
+    .from(schema.enrollments)
+    .where(eq(schema.enrollments.userId, seatClaimant.id))
+    .all();
+  if (!claimantEnrollments.some((row) => row.courseId === course1.id)) {
+    db.insert(schema.enrollments)
+      .values({
+        userId: seatClaimant.id,
+        courseId: course1.id,
+        enrolledAt: daysAgo(2),
+      })
+      .run();
+  }
+  db.insert(schema.refundRequests)
+    .values({
+      purchaseId: bossyRefundPurchase.id,
+      status: RefundRequestStatus.Open,
+      reason: "We over-ordered and only need one seat after all.",
+      requestedAt: daysAgo(3),
+    })
+    .run();
+
+  console.log("Created a team purchase with an Open Refund Request.");
 
   // ─── Flush watch events ───
   // Batched: the heartbeat makes these by far the largest table, and one

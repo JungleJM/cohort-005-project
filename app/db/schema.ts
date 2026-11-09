@@ -31,10 +31,16 @@ export enum QuestionType {
   TrueFalse = "true_false",
 }
 
-export enum RefundStatus {
+export enum RefundRequestStatus {
   Open = "open",
   Approved = "approved",
   Declined = "declined",
+}
+
+export enum RefundStatus {
+  Pending = "pending",
+  Issued = "issued",
+  Failed = "failed",
 }
 
 export enum TeamMemberRole {
@@ -229,8 +235,8 @@ export const purchases = sqliteTable(
   (table) => [index("purchases_course_idx").on(table.courseId)]
 );
 
-export const refunds = sqliteTable(
-  "refunds",
+export const refundRequests = sqliteTable(
+  "refund_requests",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     purchaseId: integer("purchase_id")
@@ -238,20 +244,35 @@ export const refunds = sqliteTable(
       .references(() => purchases.id),
     status: text("status")
       .notNull()
-      .$type<RefundStatus>()
-      .default(RefundStatus.Open),
-    // The learner's own words, in the box on the course page.
+      .$type<RefundRequestStatus>()
+      .default(RefundRequestStatus.Open),
+    // The Learner's own words, in the box on the course page.
     reason: text("reason").notNull(),
-    // Null until someone approves — a declined request refunds nothing.
-    amountRefunded: integer("amount_refunded"),
+    reasonForDecline: text("reason_for_decline"),
     requestedAt: text("requested_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
-    resolvedAt: text("resolved_at"),
-    resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
+    decidedAt: text("decided_at"),
+    decidedByUserId: integer("decided_by_user_id").references(() => users.id),
   },
-  (table) => [index("refunds_purchase_idx").on(table.purchaseId)]
+  (table) => [index("refund_requests_purchase_idx").on(table.purchaseId)]
 );
+
+export const refunds = sqliteTable("refunds", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  refundRequestId: integer("refund_request_id")
+    .notNull()
+    .unique()
+    .references(() => refundRequests.id),
+  amount: integer("amount").notNull(),
+  status: text("status")
+    .notNull()
+    .$type<RefundStatus>()
+    .default(RefundStatus.Pending),
+  createdAt: text("created_at")
+    .notNull()
+    .$defaultFn(() => new Date().toISOString()),
+});
 
 export const teams = sqliteTable("teams", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -288,6 +309,9 @@ export const coupons = sqliteTable("coupons", {
     .references(() => purchases.id),
   redeemedByUserId: integer("redeemed_by_user_id").references(() => users.id),
   redeemedAt: text("redeemed_at"),
+  // Set when the Seat was handed back by an approved Refund Request. The code
+  // stops working from then on.
+  refundId: integer("refund_id").references(() => refunds.id),
   createdAt: text("created_at")
     .notNull()
     .$defaultFn(() => new Date().toISOString()),
